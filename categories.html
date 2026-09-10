@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Categories · Modus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="shell" id="shell"></div>
+
+<div class="modal-overlay" id="cat-modal">
+  <div class="modal">
+    <h3 id="cat-modal-title">Add category</h3>
+    <div class="form-field" style="margin-bottom:16px;">
+      <label for="cat-name">Category name</label>
+      <input type="text" id="cat-name" placeholder="e.g. Electronics" />
+      <span class="field-error" id="cat-name-error">Category name is required.</span>
+    </div>
+    <div class="form-field" style="margin-bottom:4px;">
+      <label for="cat-color">Color</label>
+      <input type="color" id="cat-color" value="#0070f3" style="height:36px; padding:2px; cursor:pointer;" />
+    </div>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn btn-secondary" id="cat-cancel">Cancel</button>
+      <button class="btn btn-primary" id="cat-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal">
+    <h3>Delete this category?</h3>
+    <p id="delete-modal-text">This can't be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancel-delete">Cancel</button>
+      <button class="btn btn-danger" id="confirm-delete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/sidebar.js"></script>
+<script src="js/data.js"></script>
+<script>
+  document.getElementById("shell").innerHTML = `
+    ${renderSidebar("categories")}
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Categories</div>
+          <div class="page-subtitle" id="cat-subtitle">Group items by type</div>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" id="open-add-category">+ Add category</button>
+        </div>
+      </div>
+
+      <div class="category-grid" id="category-grid"></div>
+    </main>
+  `;
+
+  let { items, categories } = loadData();
+  let editingCatId = null;
+  let pendingDeleteId = null;
+
+  function render() {
+    document.getElementById("cat-subtitle").textContent = `${categories.length} categories`;
+    const grid = document.getElementById("category-grid");
+
+    if (categories.length === 0) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><h3>No categories yet</h3><p>Add a category to start organizing items.</p></div>`;
+      return;
+    }
+
+    grid.innerHTML = categories
+      .map((c) => {
+        const count = items.filter((i) => i.categoryId === c.id).length;
+        return `
+          <div class="category-card">
+            <div class="category-card-top">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="category-swatch" style="background:${c.color}"></span>
+                <div>
+                  <div class="category-name">${c.name}</div>
+                  <div class="category-count">${count} item${count === 1 ? "" : "s"}</div>
+                </div>
+              </div>
+              <div class="category-actions">
+                <button class="icon-btn" title="Edit" data-edit="${c.id}">${editIcon()}</button>
+                <button class="icon-btn" title="Delete" data-delete="${c.id}">${trashIcon()}</button>
+              </div>
+            </div>
+          </div>`;
+      })
+      .join("");
+
+    grid.querySelectorAll("[data-edit]").forEach((btn) =>
+      btn.addEventListener("click", () => openCatModal(btn.getAttribute("data-edit")))
+    );
+    grid.querySelectorAll("[data-delete]").forEach((btn) =>
+      btn.addEventListener("click", () => openDeleteModal(btn.getAttribute("data-delete")))
+    );
+  }
+
+  function openCatModal(id) {
+    editingCatId = id || null;
+    const modalTitle = document.getElementById("cat-modal-title");
+    const nameInput = document.getElementById("cat-name");
+    const colorInput = document.getElementById("cat-color");
+    nameInput.closest(".form-field").classList.remove("invalid");
+
+    if (id) {
+      const cat = categories.find((c) => c.id === id);
+      modalTitle.textContent = "Edit category";
+      nameInput.value = cat.name;
+      colorInput.value = cat.color;
+    } else {
+      modalTitle.textContent = "Add category";
+      nameInput.value = "";
+      colorInput.value = "#0070f3";
+    }
+    document.getElementById("cat-modal").classList.add("open");
+    nameInput.focus();
+  }
+
+  document.getElementById("open-add-category").addEventListener("click", () => openCatModal(null));
+  document.getElementById("cat-cancel").addEventListener("click", () => {
+    document.getElementById("cat-modal").classList.remove("open");
+  });
+
+  document.getElementById("cat-save").addEventListener("click", () => {
+    const nameInput = document.getElementById("cat-name");
+    const name = nameInput.value.trim();
+    const color = document.getElementById("cat-color").value;
+
+    if (!name) {
+      nameInput.closest(".form-field").classList.add("invalid");
+      return;
+    }
+
+    if (editingCatId) {
+      const cat = categories.find((c) => c.id === editingCatId);
+      cat.name = name;
+      cat.color = color;
+    } else {
+      categories.push({ id: uid("cat"), name, color });
+    }
+
+    saveData(items, categories);
+    document.getElementById("cat-modal").classList.remove("open");
+    showToast(editingCatId ? "Category updated" : "Category added");
+    render();
+  });
+
+  function openDeleteModal(id) {
+    const cat = categories.find((c) => c.id === id);
+    if (!cat) return;
+    const count = items.filter((i) => i.categoryId === id).length;
+    pendingDeleteId = id;
+    document.getElementById("delete-modal-text").textContent =
+      count > 0
+        ? `“${cat.name}” has ${count} item${count === 1 ? "" : "s"} assigned. Deleting it won't delete those items.`
+        : `“${cat.name}” will be removed. This can't be undone.`;
+    document.getElementById("delete-modal").classList.add("open");
+  }
+
+  document.getElementById("cancel-delete").addEventListener("click", () => {
+    pendingDeleteId = null;
+    document.getElementById("delete-modal").classList.remove("open");
+  });
+
+  document.getElementById("confirm-delete").addEventListener("click", () => {
+    if (!pendingDeleteId) return;
+    categories = categories.filter((c) => c.id !== pendingDeleteId);
+    saveData(items, categories);
+    document.getElementById("delete-modal").classList.remove("open");
+    showToast("Category deleted");
+    pendingDeleteId = null;
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>

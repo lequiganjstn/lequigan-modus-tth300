@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Add Item · Modus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="shell" id="shell"></div>
+
+<script src="js/sidebar.js"></script>
+<script src="js/data.js"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const editId = params.get("id");
+
+  document.getElementById("shell").innerHTML = `
+    ${renderSidebar("item-form")}
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div class="page-title" id="form-title">Add item</div>
+          <div class="page-subtitle" id="form-subtitle">Add a new item to inventory</div>
+        </div>
+      </div>
+
+      <form class="card form-card" id="item-form" novalidate>
+        <div class="form-grid">
+          <div class="form-field full">
+            <label for="name">Item name</label>
+            <input type="text" id="name" placeholder="e.g. Wireless Mouse M185" />
+            <span class="field-error">Item name is required.</span>
+          </div>
+
+          <div class="form-field">
+            <label for="sku">SKU</label>
+            <input type="text" id="sku" placeholder="e.g. ELE-1042" />
+            <span class="field-error">SKU is required.</span>
+          </div>
+
+          <div class="form-field">
+            <label for="category">Category</label>
+            <select id="category"></select>
+          </div>
+
+          <div class="form-field">
+            <label for="qty">Quantity</label>
+            <input type="number" id="qty" min="0" step="1" placeholder="0" />
+            <span class="field-error">Enter a quantity of 0 or more.</span>
+          </div>
+
+          <div class="form-field">
+            <label for="reorder">Reorder level</label>
+            <input type="number" id="reorder" min="0" step="1" placeholder="0" />
+            <span class="hint">Flagged as low stock at or below this.</span>
+          </div>
+
+          <div class="form-field">
+            <label for="unitCost">Unit cost</label>
+            <div class="input-prefix">
+              <span>$</span>
+              <input type="number" id="unitCost" min="0" step="0.01" placeholder="0.00" />
+            </div>
+            <span class="field-error">Enter a valid cost.</span>
+          </div>
+
+          <div class="form-field">
+            <label for="location">Storage location</label>
+            <input type="text" id="location" placeholder="e.g. A1-03" />
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <a href="inventory.html" class="btn btn-secondary">Cancel</a>
+          <button type="submit" class="btn btn-primary" id="submit-btn">Add item</button>
+        </div>
+      </form>
+    </main>
+  `;
+
+  let { items, categories } = loadData();
+
+  const categorySelect = document.getElementById("category");
+  categorySelect.innerHTML = categories.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+
+  let editingItem = null;
+  if (editId) {
+    editingItem = items.find((i) => i.id === editId);
+    if (editingItem) {
+      document.getElementById("form-title").textContent = "Edit item";
+      document.getElementById("form-subtitle").textContent = `Editing “${editingItem.name}”`;
+      document.getElementById("submit-btn").textContent = "Save changes";
+      document.getElementById("name").value = editingItem.name;
+      document.getElementById("sku").value = editingItem.sku;
+      categorySelect.value = editingItem.categoryId;
+      document.getElementById("qty").value = editingItem.qty;
+      document.getElementById("reorder").value = editingItem.reorderLevel;
+      document.getElementById("unitCost").value = editingItem.unitCost;
+      document.getElementById("location").value = editingItem.location || "";
+    }
+  }
+
+  function setInvalid(fieldId, invalid) {
+    document.getElementById(fieldId).closest(".form-field").classList.toggle("invalid", invalid);
+  }
+
+  document.getElementById("item-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+
+    const name = document.getElementById("name").value.trim();
+    const sku = document.getElementById("sku").value.trim();
+    const qty = document.getElementById("qty").value;
+    const unitCost = document.getElementById("unitCost").value;
+
+    let valid = true;
+    setInvalid("name", !name); if (!name) valid = false;
+    setInvalid("sku", !sku); if (!sku) valid = false;
+    setInvalid("qty", qty === "" || Number(qty) < 0); if (qty === "" || Number(qty) < 0) valid = false;
+    setInvalid("unitCost", unitCost === "" || Number(unitCost) < 0); if (unitCost === "" || Number(unitCost) < 0) valid = false;
+
+    if (!valid) return;
+
+    const payload = {
+      name,
+      sku,
+      categoryId: categorySelect.value,
+      qty: Number(qty),
+      reorderLevel: Number(document.getElementById("reorder").value || 0),
+      unitCost: Number(unitCost),
+      location: document.getElementById("location").value.trim(),
+    };
+
+    if (editingItem) {
+      Object.assign(editingItem, payload);
+    } else {
+      items.push({ id: uid("itm"), ...payload });
+    }
+
+    saveData(items, categories);
+    showToast(editingItem ? "Item updated" : "Item added");
+    window.location.href = "inventory.html";
+  });
+</script>
+</body>
+</html>

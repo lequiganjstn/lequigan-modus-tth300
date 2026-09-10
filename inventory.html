@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Inventory · Modus</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="shell" id="shell"></div>
+
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal">
+    <h3>Delete this item?</h3>
+    <p id="delete-modal-text">This can't be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancel-delete">Cancel</button>
+      <button class="btn btn-danger" id="confirm-delete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/sidebar.js"></script>
+<script src="js/data.js"></script>
+<script>
+  document.getElementById("shell").innerHTML = `
+    ${renderSidebar("inventory")}
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Inventory</div>
+          <div class="page-subtitle" id="count-subtitle">All items in stock</div>
+        </div>
+        <div class="topbar-actions">
+          <a href="item-form.html" class="btn btn-primary">+ Add item</a>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <div class="search-input">
+          ${searchIcon()}
+          <input type="text" id="search" placeholder="Search by name or SKU" />
+        </div>
+        <select class="select-input" id="category-filter"></select>
+        <select class="select-input" id="status-filter">
+          <option value="">All statuses</option>
+          <option value="ok">In stock</option>
+          <option value="low">Low stock</option>
+          <option value="out">Out of stock</option>
+        </select>
+      </div>
+
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>SKU</th>
+              <th>Category</th>
+              <th>Location</th>
+              <th>Quantity</th>
+              <th>Unit cost</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </main>
+  `;
+
+  let { items, categories } = loadData();
+  let pendingDeleteId = null;
+
+  const catFilter = document.getElementById("category-filter");
+  catFilter.innerHTML =
+    `<option value="">All categories</option>` +
+    categories.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+
+  function badgeFor(status) {
+    if (status === "out") return `<span class="badge badge-out"><span class="badge-dot"></span>Out of stock</span>`;
+    if (status === "low") return `<span class="badge badge-low"><span class="badge-dot"></span>Low stock</span>`;
+    return `<span class="badge badge-ok"><span class="badge-dot"></span>In stock</span>`;
+  }
+
+  function render() {
+    const q = document.getElementById("search").value.trim().toLowerCase();
+    const catVal = catFilter.value;
+    const statusVal = document.getElementById("status-filter").value;
+
+    const filtered = items.filter((i) => {
+      const matchesQ = !q || i.name.toLowerCase().includes(q) || i.sku.toLowerCase().includes(q);
+      const matchesCat = !catVal || i.categoryId === catVal;
+      const matchesStatus = !statusVal || stockStatus(i) === statusVal;
+      return matchesQ && matchesCat && matchesStatus;
+    });
+
+    document.getElementById("count-subtitle").textContent =
+      `${filtered.length} of ${items.length} items`;
+
+    const rows = document.getElementById("rows");
+
+    if (filtered.length === 0) {
+      rows.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>No items found</h3><p>Try a different search or filter.</p></div></td></tr>`;
+      return;
+    }
+
+    rows.innerHTML = filtered
+      .map((i) => {
+        const cat = categoryById(categories, i.categoryId);
+        return `
+          <tr>
+            <td class="cell-primary">${i.name}</td>
+            <td class="sku-tag">${i.sku}</td>
+            <td>${cat ? `<span class="pill">${cat.name}</span>` : "—"}</td>
+            <td>${i.location || "—"}</td>
+            <td>${i.qty}</td>
+            <td>${formatCurrency(i.unitCost)}</td>
+            <td>${badgeFor(stockStatus(i))}</td>
+            <td>
+              <div class="row-actions">
+                <a class="icon-btn" href="item-form.html?id=${i.id}" title="Edit">${editIcon()}</a>
+                <button class="icon-btn" title="Delete" data-delete="${i.id}">${trashIcon()}</button>
+              </div>
+            </td>
+          </tr>`;
+      })
+      .join("");
+
+    rows.querySelectorAll("[data-delete]").forEach((btn) => {
+      btn.addEventListener("click", () => openDeleteModal(btn.getAttribute("data-delete")));
+    });
+  }
+
+  function openDeleteModal(id) {
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+    pendingDeleteId = id;
+    document.getElementById("delete-modal-text").textContent =
+      `“${item.name}” will be removed from inventory. This can't be undone.`;
+    document.getElementById("delete-modal").classList.add("open");
+  }
+
+  document.getElementById("cancel-delete").addEventListener("click", () => {
+    pendingDeleteId = null;
+    document.getElementById("delete-modal").classList.remove("open");
+  });
+
+  document.getElementById("confirm-delete").addEventListener("click", () => {
+    if (!pendingDeleteId) return;
+    items = items.filter((i) => i.id !== pendingDeleteId);
+    saveData(items, categories);
+    document.getElementById("delete-modal").classList.remove("open");
+    showToast("Item deleted");
+    pendingDeleteId = null;
+    render();
+  });
+
+  document.getElementById("search").addEventListener("input", render);
+  catFilter.addEventListener("change", render);
+  document.getElementById("status-filter").addEventListener("change", render);
+
+  render();
+</script>
+</body>
+</html>
